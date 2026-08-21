@@ -1,4 +1,4 @@
-﻿# DeepSeek Harness 一键启动器（便携版，可在任何机器上运行）
+# DeepSeek Harness 一键启动器（便携版，可在任何机器上运行）
 # 工作区 = 本脚本所在 launcher 目录的上一级目录
 param([switch]$NoBrowser)
 
@@ -51,6 +51,51 @@ try {
     }
 } catch {
     Write-Host "版本检查跳过：$($_.Exception.Message)" -ForegroundColor DarkGray
+}
+
+# ---- 插件自动更新：web profile 里 npm 安装的插件包（每天最多查一次，失败不阻塞）----
+try {
+    $stampFile = "$env:USERPROFILE\.dsh\logs\plugin-autoupdate.stamp"
+    $profileDir = "$env:USERPROFILE\.dsh\profiles\web"
+    if (Test-Path "$profileDir\package.json") {
+        $needCheck = $true
+        if (Test-Path $stampFile) {
+            $last = Get-Content $stampFile -Raw -ErrorAction SilentlyContinue
+            if ($last -match '^\d{4}-\d{2}-\d{2}$' -and $last -eq (Get-Date -Format 'yyyy-MM-dd')) { $needCheck = $false }
+        }
+        if ($needCheck) {
+            (Get-Date -Format 'yyyy-MM-dd') | Set-Content $stampFile -Force
+            # 只更新 profile dependencies 里声明的插件包（官方 bundles 不在 dependencies，天然排除；
+            # 自研插件走 junction 安装、无 npm 源，也不受影响）
+            $deps = (Get-Content "$profileDir\package.json" -Raw | ConvertFrom-Json).dependencies
+            $npmSpecs = @()
+            if ($deps) { $npmSpecs = $deps.PSObject.Properties.Name | Where-Object { $_ -notlike '@deepseek-ai/*' } }
+            $toUpdate = @()
+            foreach ($spec in ($npmSpecs | Sort-Object -Unique)) {
+                $localDir = Join-Path $profileDir ("node_modules\" + ($spec -replace '/', '\'))
+                if (-not (Test-Path "$localDir\package.json")) { continue }
+                $local = (Get-Content "$localDir\package.json" -Raw | ConvertFrom-Json).version
+                $latest = & npm view $spec version 2>$null
+                if ($latest -and $local -and ($local.Trim() -ne $latest.Trim())) { $toUpdate += "$spec@$latest" }
+            }
+            if ($toUpdate.Count -gt 0) {
+                Write-Host "插件有更新: $($toUpdate -join ', ')，正在升级..."
+                "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] plugins: $($toUpdate -join ', ')" | Add-Content "$env:USERPROFILE\.dsh\logs\autoupdate.log"
+                Push-Location $profileDir
+                & npm install ($toUpdate | ForEach-Object { $_ }) --save --registry=https://registry.npmmirror.com 2>>"$env:USERPROFILE\.dsh\logs\autoupdate.log" | Out-Null
+                $ok = $LASTEXITCODE -eq 0
+                Pop-Location
+                if ($ok) { Write-Host "插件已更新到最新" -ForegroundColor Green }
+                else { Write-Host "插件更新失败，继续使用当前版本" -ForegroundColor Yellow }
+            } else {
+                Write-Host "插件均为最新" -ForegroundColor DarkGray
+            }
+        } else {
+            Write-Host "插件今日已检查过，跳过" -ForegroundColor DarkGray
+        }
+    }
+} catch {
+    Write-Host "插件更新跳过：$($_.Exception.Message)" -ForegroundColor DarkGray
 }
 
 $server = Start-Process -FilePath "$env:ComSpec" `
