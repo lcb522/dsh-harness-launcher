@@ -3,7 +3,14 @@
 ## 安装包内容
 - `setup-new-pc.ps1`     一键安装脚本（在新电脑上运行这个）
 - `start-harness.ps1`    启动器（安装脚本会自动复制到位，不用手动动它）
+- `update-plugins.ps1`   插件自动更新脚本（start-harness.ps1 会调用它）
 - `deepseek-color.ico`   图标文件
+
+## 每次启动自动更新（默认开启）
+- **Harness 本体**：检测到 npm 有新版 → 同步更新完再启动（本次即最新）
+- **插件全家桶**：检测到新版 → 20 秒内更完就本次生效；超时则先启动服务、更新转后台（下次启动生效）
+- 紧急排查可跳过更新：`powershell -ExecutionPolicy Bypass -File start-harness.ps1 -SkipUpdate`
+- 日志：`launcher\plugin-update.log` 与 `~/.dsh/logs/autoupdate.log`
 
 ## 步骤
 

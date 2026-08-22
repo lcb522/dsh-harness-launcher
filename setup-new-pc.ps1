@@ -25,7 +25,7 @@ else {
 $src      = $PSScriptRoot
 $launcher = Join-Path $Workspace 'launcher'
 New-Item -ItemType Directory -Force -Path $launcher | Out-Null
-foreach ($f in @('start-harness.ps1', 'deepseek-color.ico')) {
+foreach ($f in @('start-harness.ps1', 'update-plugins.ps1', 'deepseek-color.ico')) {
     $from = Join-Path $src $f
     $to   = Join-Path $launcher $f
     if (-not (Test-Path -LiteralPath $from)) { Write-Host "[警告] 安装包缺少 $f，跳过" -ForegroundColor Yellow; continue }

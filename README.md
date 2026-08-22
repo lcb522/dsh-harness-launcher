@@ -9,10 +9,34 @@
 |---|---|
 | `setup-new-pc.ps1` | **一键安装脚本**（在新电脑上运行这个） |
 | `start-harness.ps1` | 启动器（安装脚本会自动复制到位，无需手动动它） |
+| `update-plugins.ps1` | 插件自动更新脚本（start-harness.ps1 每次启动调用） |
 | `deepseek-color.ico` / `.png` | 桌面图标文件 |
 | `make-icon-from-png.ps1` | 从 PNG 重新生成 ico 的工具脚本（可选） |
 | `harness-portable.zip` | 以上安装文件的打包版，方便直接传输 |
 | `README-新电脑安装.md` | 精简版安装说明（可随包一起拷走） |
+
+## 每次启动自动更新（默认开启）
+
+双击图标后，启动器在拉起服务前会自动做两级更新检查（`-SkipUpdate` 可跳过）：
+
+| 对象 | 策略 |
+|---|---|
+| **Harness 本体**（全局安装） | 每次启动检测 npm latest；落后就**同步更新完再启动**（本次即最新）；180 秒硬超时，失败不阻塞启动 |
+| **插件全家桶**（`@linxin666/dsh-web-ui-all`） | 每次启动检测；有新版时同步等待最多 20 秒（`-PluginUpdateBudgetSec` 可调）：**预算内完成 → 本次生效**；**超时 → 先启动服务，更新转后台，下次启动生效** |
+
+安全设计：
+- 服务**已在运行**时只开浏览器，不做任何更新动作（避免动运行中的文件）
+- 后台更新等**服务就绪后**才启动，不会和服务抢 `node_modules`
+- 版本比较用语义化版本规则（支持 `0.1.1-rc.2` 预发布号），**只升不降**
+- 网络检查 15 秒超时，离线时快速跳过
+- 日志：`launcher\plugin-update.log`（插件）与 `~/.dsh/logs/autoupdate.log`（Harness）
+
+```powershell
+# 紧急排查：跳过更新启动
+powershell -ExecutionPolicy Bypass -File start-harness.ps1 -SkipUpdate
+# 手动立即更新插件
+powershell -ExecutionPolicy Bypass -File update-plugins.ps1
+```
 
 ## 安装（新电脑）
 
