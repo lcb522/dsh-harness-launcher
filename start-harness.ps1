@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 #  DeepSeek Harness 一键启动器（便携版，可在任何机器上运行）
 #  工作区 = 本脚本所在 launcher 目录的上一级目录
 #
@@ -124,6 +124,54 @@ if (-not $SkipUpdate) {
             }
         }
     } catch { Write-Host "[更新] Harness 检查跳过：$($_.Exception.Message)" -ForegroundColor DarkGray }
+
+    # ---------- 2.5 junction 安装的本地插件（如 dsh-sync-panel）：git 检查更新 ----------
+    # 这类插件不在 npm 上（node_modules 里是指向源码目录的 junction），
+    # npm 通道永远查不到；这里直接对源码 git 仓库做 fetch + 落后才 pull。
+    try {
+        $nmDir = Join-Path $env:USERPROFILE '.dsh\profiles\web\node_modules'
+        if (Test-Path $nmDir) {
+            foreach ($entry in (Get-ChildItem $nmDir -Directory -ErrorAction SilentlyContinue)) {
+                if ($entry.LinkType -ne 'Junction' -and $entry.LinkType -ne 'SymbolicLink') { continue }
+                $target = $entry.Target
+                if ($target -is [array]) { $target = $target[0] }
+                if (-not $target -or -not (Test-Path -LiteralPath $target)) { continue }
+
+                # 从目标目录向上找 git 仓库根（junction 可能指向仓库的子目录）
+                $repo = (& git -C $target rev-parse --show-toplevel 2>$null)
+                if (-not $repo -or $LASTEXITCODE -ne 0) { continue }
+                $repo = "$repo".Trim()
+                $branch = (& git -C $repo branch --show-current 2>$null)
+                if (-not $branch) { continue }
+
+                # 有本地改动/未提交内容：跳过（不覆盖用户手上的活）
+                $dirty = (& git -C $repo status --porcelain 2>$null)
+                if ($dirty) {
+                    Write-Host "[更新] 跳过本地插件 $($entry.Name)：源码有未提交改动" -ForegroundColor DarkYellow
+                    continue
+                }
+
+                # fetch 远端（禁交互凭据；失败即静默跳过，不阻塞启动）
+                $env:GIT_TERMINAL_PROMPT = '0'
+                & git -C $repo -c http.sslBackend=openssl -c credential.helper= fetch origin 2>$null
+                $remoteRef = (& git -C $repo rev-parse --verify "origin/$branch" 2>$null)
+                if (-not $remoteRef) { continue }
+                $behind = (& git -C $repo rev-list --count "HEAD..origin/$branch" 2>$null)
+                if ($behind -and ([int]"$behind" -gt 0)) {
+                    Write-Host "[更新] 本地插件 $($entry.Name) 落后远端 $behind 个提交，正在拉取..." -ForegroundColor Cyan
+                    $pullOut = & git -C $repo -c http.sslBackend=openssl -c credential.helper= pull --ff-only origin $branch 2>&1
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Host "[更新] $($entry.Name) 已更新到最新（本次启动即生效）" -ForegroundColor Green
+                        Write-UpdLog "junction $($entry.Name): pulled $behind commit(s)"
+                    } else {
+                        $firstLine = (($pullOut | Out-String).Trim() -split "`r?`n")[0]
+                        Write-Host "[更新] $($entry.Name) 拉取失败：$firstLine" -ForegroundColor Yellow
+                        Write-UpdLog "junction $($entry.Name): pull FAILED"
+                    }
+                }
+            }
+        }
+    } catch { Write-Host "[更新] 本地插件检查跳过：$($_.Exception.Message)" -ForegroundColor DarkGray }
 
     # ---------- 3. 插件全家桶更新检查（每次启动；预算内同步，超时先启动） ----------
     $updateScript = Join-Path $PSScriptRoot 'update-plugins.ps1'

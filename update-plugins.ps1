@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 #  DeepSeek Harness 插件自动更新脚本
 #  由 start-harness.ps1 调用；也可手动运行: powershell -File update-plugins.ps1
 #  作用: 检查 @linxin666/dsh-web-ui-all 是否落后于 npm latest，落后则更新
